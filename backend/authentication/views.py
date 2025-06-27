@@ -28,10 +28,10 @@ def google_auth(request):
     print(f"Token received: {token[:20]}...")  # Debug log
     
     try:
-        # Verify the token with Google
+        # Verify the ID token with Google
         google_response = requests.get(
-            'https://www.googleapis.com/oauth2/v3/tokeninfo',
-            params={'access_token': token}
+            'https://oauth2.googleapis.com/tokeninfo',
+            params={'id_token': token}
         )
         
         if google_response.status_code != 200:
@@ -42,13 +42,12 @@ def google_auth(request):
         
         user_info = google_response.json()
         
-        # Check if the token is for our app
-        # Temporarily disabled for testing
-        # if user_info.get('aud') != settings.GOOGLE_CLIENT_ID:
-        #     return Response(
-        #         {'error': 'Invalid client ID'}, 
-        #         status=status.HTTP_400_BAD_REQUEST
-        #     )
+        # Check if the token is for our app (if GOOGLE_CLIENT_ID is set)
+        if settings.GOOGLE_CLIENT_ID and user_info.get('aud') != settings.GOOGLE_CLIENT_ID:
+            return Response(
+                {'error': 'Invalid client ID'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         google_id = user_info.get('sub')
         email = user_info.get('email')

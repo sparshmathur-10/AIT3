@@ -29,7 +29,7 @@ class TodoViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def plan(self, request):
         """
-        AI Planning endpoint using DeepSeek API
+        AI Planning endpoint using GitHub AI inference API with DeepSeek model
         """
         serializer = AIPlanningSerializer(data=request.data)
         if not serializer.is_valid():
@@ -38,65 +38,100 @@ class TodoViewSet(viewsets.ModelViewSet):
         tasks = serializer.validated_data['tasks']
         
         try:
-            # Prepare prompt for DeepSeek API
-            prompt = f"""You are now PlanningProductivityExpert. Make a realistic plan based on priority and length of these tasks:
+            # Prepare prompt for AI planning
+            system_prompt = """You are a productivity expert. Analyze the given tasks and provide a comprehensive plan with:
+1. A detailed planning strategy
+2. Prioritized task list with estimated time and priority levels
+3. Suggested execution order
+4. Any dependencies or recommendations
 
-Tasks:
-{chr(10).join(f"- {task}" for task in tasks)}
-
-Please provide:
-1. A comprehensive plan with estimated time for each task
-2. Priority recommendations (High/Medium/Low)
-3. Suggested order of execution
-4. Any dependencies between tasks
-
-Format your response as JSON with the following structure:
-{{
+Format your response as JSON with this structure:
+{
     "plan": "Your detailed planning advice here",
     "prioritized_tasks": [
-        {{
+        {
             "task": "task description",
             "priority": "high/medium/low",
             "estimated_time": "X hours/minutes",
             "order": 1
-        }}
+        }
     ]
-}}"""
+}"""
 
-            # Call DeepSeek API via GitHub
+            user_prompt = f"""Please analyze and plan these {len(tasks)} tasks:
+
+{chr(10).join(f"- {task}" for task in tasks)}
+
+Provide a realistic, actionable plan that considers task complexity, dependencies, and optimal execution order."""
+
+            # Call GitHub AI inference API
             headers = {
-                'Authorization': f'token {settings.GITHUB_TOKEN}',
-                'Accept': 'application/vnd.github.v3+json',
+                'Authorization': f'Bearer {settings.GITHUB_TOKEN}',
                 'Content-Type': 'application/json',
             }
             
-            # Using GitHub's API to access DeepSeek (this is a placeholder - you'll need to adjust based on actual API)
-            # For now, we'll simulate the response
-            response_data = {
-                "plan": f"Based on the {len(tasks)} tasks provided, here's a comprehensive plan:\n\n" +
-                       "1. **High Priority Tasks**: Focus on urgent and important items first\n" +
-                       "2. **Time Management**: Allocate realistic time blocks for each task\n" +
-                       "3. **Dependencies**: Consider task dependencies and prerequisites\n" +
-                       "4. **Flexibility**: Build in buffer time for unexpected issues\n\n" +
-                       "Recommended approach: Start with quick wins to build momentum, then tackle complex tasks.",
-                "prioritized_tasks": [
-                    {
-                        "task": task,
-                        "priority": "high" if i < len(tasks) // 3 else "medium" if i < 2 * len(tasks) // 3 else "low",
-                        "estimated_time": f"{30 + i * 15} minutes",
-                        "order": i + 1
-                    }
-                    for i, task in enumerate(tasks)
-                ]
+            payload = {
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "max_tokens": 2048,
+                "model": "deepseek/DeepSeek-V3-0324"
             }
             
-            # In production, replace the above with actual API call:
-            # response = requests.post(
-            #     'https://api.github.com/...',  # DeepSeek API endpoint
-            #     headers=headers,
-            #     json={'prompt': prompt}
-            # )
-            # response_data = response.json()
+            response = requests.post(
+                'https://models.github.ai/inference/chat/completions',
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code != 200:
+                return Response(
+                    {'error': f'AI service error: {response.status_code} - {response.text}'}, 
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE
+                )
+            
+            ai_response = response.json()
+            content = ai_response.get('choices', [{}])[0].get('message', {}).get('content', '')
+            
+            # Try to parse JSON from the response
+            try:
+                # Extract JSON from the response (it might be wrapped in markdown)
+                import re
+                json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                if json_match:
+                    response_data = json.loads(json_match.group())
+                else:
+                    # Fallback: create a structured response from the text
+                    response_data = {
+                        "plan": content,
+                        "prioritized_tasks": [
+                            {
+                                "task": task,
+                                "priority": "high" if i < len(tasks) // 3 else "medium" if i < 2 * len(tasks) // 3 else "low",
+                                "estimated_time": f"{30 + i * 15} minutes",
+                                "order": i + 1
+                            }
+                            for i, task in enumerate(tasks)
+                        ]
+                    }
+            except json.JSONDecodeError:
+                # If JSON parsing fails, create a structured response
+                response_data = {
+                    "plan": content,
+                    "prioritized_tasks": [
+                        {
+                            "task": task,
+                            "priority": "high" if i < len(tasks) // 3 else "medium" if i < 2 * len(tasks) // 3 else "low",
+                            "estimated_time": f"{30 + i * 15} minutes",
+                            "order": i + 1
+                        }
+                        for i, task in enumerate(tasks)
+                    ]
+                }
             
             response_serializer = AIPlanningResponseSerializer(data=response_data)
             if response_serializer.is_valid():
@@ -116,9 +151,4 @@ Format your response as JSON with the following structure:
             return Response(
                 {'error': f'AI planning failed: {str(e)}'}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    def update(self, request, *args, **kwargs):
-        print(f"Update request data: {request.data}")  # Debug log
-        print(f"Update request user: {request.user}")  # Debug log
-        return super().update(request, *args, **kwargs) 
+            ) 

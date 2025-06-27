@@ -11,6 +11,19 @@ class TodoSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
+    
+    def update(self, instance, validated_data):
+        # For updates, only update the fields that are provided
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
+    
+    def validate_title(self, value):
+        # Make title optional during updates
+        if self.instance is None and not value:
+            raise serializers.ValidationError("Title is required when creating a new todo.")
+        return value
 
 
 class TodoListSerializer(serializers.ModelSerializer):

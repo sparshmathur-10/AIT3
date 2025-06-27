@@ -76,7 +76,7 @@ class ApiService {
   }
 
   async updateTodo(id: number, todo: Partial<Todo>): Promise<Todo> {
-    const response = await this.api.put(`/todos/${id}/`, todo);
+    const response = await this.api.patch(`/todos/${id}/`, todo);
     return response.data;
   }
 

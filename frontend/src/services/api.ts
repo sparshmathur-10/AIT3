@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { User, Todo, AuthResponse, AIPlanningResponse, CreateTodoRequest } from '../types';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://aitodo-backend.onrender.com/api';
 
 class ApiService {
   private api: AxiosInstance;

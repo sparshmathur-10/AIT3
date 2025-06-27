@@ -116,4 +116,9 @@ Format your response as JSON with the following structure:
             return Response(
                 {'error': f'AI planning failed: {str(e)}'}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            ) 
+            )
+
+    def update(self, request, *args, **kwargs):
+        print(f"Update request data: {request.data}")  # Debug log
+        print(f"Update request user: {request.user}")  # Debug log
+        return super().update(request, *args, **kwargs) 
